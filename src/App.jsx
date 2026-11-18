@@ -294,111 +294,97 @@ function App() {
      ========================================================= */
 
   const exportarPDF = async () => {
-    const paginasPDF = editorRefs.current.filter((editor) => editor);
+  const paginasPDF = editorRefs.current.filter((editor) => editor);
 
-    if (!paginasPDF.length) {
-      return;
-    }
+  if (!paginasPDF.length) {
+    return;
+  }
 
-    const contenedor = document.createElement("div");
+  const contenedor = document.createElement("div");
+  contenedor.style.background = "white";
 
-    contenedor.style.background = "white";
+  paginasPDF.forEach((editor, index) => {
+    const pagina = document.createElement("div");
 
-    paginasPDF.forEach((editor, index) => {
-      const pagina = document.createElement("div");
+    pagina.style.width = "21cm";
+    pagina.style.minHeight = "29.7cm";
+    pagina.style.padding = "2.54cm";
+    pagina.style.boxSizing = "border-box";
+    pagina.style.background = "white";
+    pagina.style.color = "#000";
+    pagina.style.fontFamily = "'Times New Roman', serif";
+    pagina.style.fontSize = "12pt";
+    pagina.style.lineHeight = "2";
+    pagina.style.position = "relative";
+    pagina.style.pageBreakAfter =
+      index < paginasPDF.length - 1 ? "always" : "auto";
 
-      pagina.style.width = "21cm";
+    // 1. Clonamos el contenido real del editor
+    const contenidoClon = editor.cloneNode(true);
 
-      pagina.style.minHeight = "29.7cm";
-
-      pagina.style.padding = "2.54cm";
-
-      pagina.style.boxSizing = "border-box";
-
-      pagina.style.background = "white";
-
-      pagina.style.color = "#000";
-
-      pagina.style.fontFamily = "'Times New Roman', serif";
-
-      pagina.style.fontSize = "12pt";
-
-      pagina.style.lineHeight = "2";
-
-      pagina.style.position = "relative";
-
-      pagina.style.pageBreakAfter =
-        index < paginasPDF.length - 1 ? "always" : "auto";
-
-      if (numeracionActiva) {
-        const numero = document.createElement("div");
-
-        numero.textContent = index + 1;
-
-        numero.style.position = "absolute";
-
-        numero.style.top = "1cm";
-
-        numero.style.right = "1.27cm";
-
-        numero.style.fontFamily = "'Times New Roman', serif";
-
-        numero.style.fontSize = "12pt";
-
-        numero.style.color = "#000";
-
-        pagina.appendChild(numero);
-      }
-
-      contenido.querySelectorAll("h2, h3, h4").forEach((h) => {
-        h.style.fontSize = "12pt";
-        h.style.margin = "0";
-        h.style.textIndent = "0";
-        h.style.fontWeight = "bold";
-        h.style.fontStyle = h.tagName === "H4" ? "italic" : "normal";
-        h.style.textAlign = h.tagName === "H2" ? "center" : "left";
-      });
+    // 2. Corregimos los encabezados dentro del clon (antes usaba 'contenido')
+    contenidoClon.querySelectorAll("h2, h3, h4").forEach((h) => {
+      h.style.fontSize = "12pt";
+      h.style.margin = "0";
+      h.style.textIndent = "0";
+      h.style.fontWeight = "bold";
+      h.style.fontStyle = h.tagName === "H4" ? "italic" : "normal";
+      h.style.textAlign = h.tagName === "H2" ? "center" : "left";
     });
 
-    document.body.appendChild(contenedor);
+    // 3. Insertamos el clon en la página
+    pagina.appendChild(contenidoClon);
 
-    const opciones = {
-      margin: 0,
-
-      filename: "Documento_APA.pdf",
-
-      image: {
-        type: "jpeg",
-        quality: 0.98,
-      },
-
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      },
-
-      jsPDF: {
-        unit: "cm",
-        format: "a4",
-        orientation: "portrait",
-      },
-
-      pagebreak: {
-        mode: ["css", "legacy"],
-      },
-    };
-
-    try {
-      await html2pdf().set(opciones).from(contenedor).save();
-    } catch (error) {
-      console.error("Error exportando PDF:", error);
-
-      alert("No se pudo exportar el PDF.");
+    // 4. Agregamos la numeración si está activa
+    if (numeracionActiva) {
+      const numero = document.createElement("div");
+      numero.textContent = index + 1;
+      numero.style.position = "absolute";
+      numero.style.top = "1cm";
+      numero.style.right = "1.27cm";
+      numero.style.fontFamily = "'Times New Roman', serif";
+      numero.style.fontSize = "12pt";
+      numero.style.color = "#000";
+      pagina.appendChild(numero);
     }
 
-    document.body.removeChild(contenedor);
+    // 5. Agregamos la página al contenedor principal
+    contenedor.appendChild(pagina);
+  });
+
+  document.body.appendChild(contenedor);
+
+  const opciones = {
+    margin: 0,
+    filename: "Documento_APA.pdf",
+    image: {
+      type: "jpeg",
+      quality: 0.98,
+    },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+    },
+    jsPDF: {
+      unit: "cm",
+      format: "a4",
+      orientation: "portrait",
+    },
+    pagebreak: {
+      mode: ["css", "legacy"],
+    },
   };
+
+  try {
+    await html2pdf().set(opciones).from(contenedor).save();
+  } catch (error) {
+    console.error("Error exportando PDF:", error);
+    alert("No se pudo exportar el PDF.");
+  }
+
+  document.body.removeChild(contenedor);
+};
 
   /* =========================================================
      CONVERTIR HTML A WORD
