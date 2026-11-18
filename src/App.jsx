@@ -386,311 +386,227 @@ function App() {
   document.body.removeChild(contenedor);
 };
 
-  /* =========================================================
-     CONVERTIR HTML A WORD
-     ========================================================= */
+ // ==========================================
+// 1. FUNCIÓN AUXILIAR PARA LIMPIAR COLOR HEX
+// ==========================================
+const limpiarColorHex = (color) => {
+  if (!color) return "000000";
 
-  const convertirTextoWord = (elemento, estilosBase = {}) => {
+  // Si el navegador devuelve el color como "rgb(0, 0, 0)" o "RGB(0, 0, 0)"
+  if (color.toLowerCase().startsWith("rgb")) {
+    const valores = color.match(/\d+/g);
+    if (valores && valores.length >= 3) {
+      return valores
+        .slice(0, 3)
+        .map((x) => parseInt(x).toString(16).padStart(2, "0"))
+        .join("")
+        .toUpperCase();
+    }
+  }
+
+  // Si viene con '#' (ej. "#000" o "#000000")
+  let hexLimpio = color.replace("#", "").trim();
+  if (hexLimpio.length === 3) {
+    hexLimpio = hexLimpio.split("").map((char) => char + char).join("");
+  }
+
+  return hexLimpio.length === 6 ? hexLimpio.toUpperCase() : "000000";
+};
+
+// ==========================================
+// 2. FUNCIÓN QUE CONVIERTE EL HTML A DOCX
+// ==========================================
+const crearContenidoWord = async (editorElement) => {
+  if (!editorElement) return [];
+
+  const nodosAProcesar =
+    editorElement.children.length > 0
+      ? Array.from(editorElement.children)
+      : [editorElement];
+
+  const parrafos = [];
+
+  for (const el of nodosAProcesar) {
+    const tagName = el.tagName ? el.tagName.toUpperCase() : "P";
+    const computedStyle = window.getComputedStyle ? window.getComputedStyle(el) : {};
+
+    // Determinar la alineación del texto
+    let alignment = AlignmentType.LEFT;
+    if (el.style.textAlign === "center" || computedStyle.textAlign === "center" || tagName === "H2") {
+      alignment = AlignmentType.CENTER;
+    } else if (el.style.textAlign === "right" || computedStyle.textAlign === "right") {
+      alignment = AlignmentType.RIGHT;
+    } else if (el.style.textAlign === "justify" || computedStyle.textAlign === "justify") {
+      alignment = AlignmentType.JUSTIFY;
+    }
+
+    // Procesar nodos hijos (texto, estilos de negrita, cursiva y color)
     const runs = [];
+    const childNodes = el.childNodes.length > 0 ? Array.from(el.childNodes) : [el];
 
-    const recorrer = (nodo, estilos = estilosBase) => {
-      if (nodo.nodeType === Node.TEXT_NODE) {
-        if (nodo.textContent) {
+    for (const child of childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (child.textContent) {
           runs.push(
             new TextRun({
-              text: nodo.textContent,
-              bold: estilos.bold,
-              italics: estilos.italics,
-              color: estilos.color,
+              text: child.textContent,
               font: "Times New Roman",
-              size: 24, // 12pt
-            }),
+              size: 24, // 12pt en medios puntos
+              color: limpiarColorHex(el.style?.color || computedStyle.color),
+            })
           );
         }
-        return;
-      }
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const childStyle = window.getComputedStyle ? window.getComputedStyle(child) : {};
+        const isBold =
+          child.tagName === "B" ||
+          child.tagName === "STRONG" ||
+          child.style?.fontWeight === "bold" ||
+          childStyle.fontWeight === "bold" ||
+          tagName === "H2" ||
+          tagName === "H3" ||
+          tagName === "H4";
 
-      if (nodo.nodeType !== Node.ELEMENT_NODE) {
-        return;
-      }
+        const isItalic =
+          child.tagName === "I" ||
+          child.tagName === "EM" ||
+          child.style?.fontStyle === "italic" ||
+          childStyle.fontStyle === "italic" ||
+          tagName === "H4";
 
-      let color = estilos.color;
+        const rawColor =
+          child.style?.color || childStyle.color || el.style?.color || computedStyle.color;
 
-      if (nodo.style && nodo.style.color) {
-        color = nodo.style.color.replace("#", "").toUpperCase();
-      }
-
-      const nuevosEstilos = {
-        bold: estilos.bold || nodo.tagName === "STRONG" || nodo.tagName === "B",
-        italics:
-          estilos.italics || nodo.tagName === "EM" || nodo.tagName === "I",
-        color,
-      };
-
-      nodo.childNodes.forEach((hijo) => recorrer(hijo, nuevosEstilos));
-    };
-
-    elemento.childNodes.forEach((hijo) => recorrer(hijo, estilosBase));
-
-    return runs;
-  };
-
-  /* =========================================================
-     CREAR CONTENIDO WORD
-     ========================================================= */
-
-  const crearContenidoWord = async (editor) => {
-    const elementos = Array.from(editor.children);
-
-    const contenido = [];
-
-    for (const elemento of elementos) {
-      const tag = elemento.tagName.toLowerCase();
-
-      if (tag === "h2") {
-        contenido.push(
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { line: 480, after: 0 },
-            children: convertirTextoWord(elemento, { bold: true }),
-          }),
+        runs.push(
+          new TextRun({
+            text: child.textContent || "",
+            font: "Times New Roman",
+            size: 24,
+            bold: isBold,
+            italics: isItalic,
+            color: limpiarColorHex(rawColor), // 👈 Limpieza segura de color para docx
+          })
         );
-        continue;
       }
+    }
 
-      if (tag === "h3") {
-        contenido.push(
+    if (runs.length === 0 && el.textContent) {
+      runs.push(
+        new TextRun({
+          text: el.textContent,
+          font: "Times New Roman",
+          size: 24,
+          color: limpiarColorHex(el.style?.color || computedStyle.color),
+        })
+      );
+    }
+
+    parrafos.push(
+      new Paragraph({
+        alignment: alignment,
+        spacing: {
+          line: 480, // Interlineado doble APA (240 * 2)
+          after: 0,
+          before: 0,
+        },
+        children: runs.length > 0 ? runs : [new TextRun({ text: "", font: "Times New Roman", size: 24 })],
+      })
+    );
+  }
+
+  return parrafos;
+};
+
+// ==========================================
+// 3. FUNCIÓN PRINCIPAL DE EXPORTACIÓN A WORD
+// ==========================================
+const exportarWord = async () => {
+  const editores = editorRefs.current.filter((editor) => editor);
+
+  if (!editores.length) {
+    return;
+  }
+
+  try {
+    const secciones = [];
+
+    for (let index = 0; index < editores.length; index++) {
+      const contenido = await crearContenidoWord(editores[index]);
+
+      if (numeracionActiva) {
+        contenido.unshift(
           new Paragraph({
-            alignment: AlignmentType.LEFT,
-            spacing: { line: 480, after: 0 },
-            children: convertirTextoWord(elemento, { bold: true }),
-          }),
-        );
-        continue;
-      }
-
-      if (tag === "h4") {
-        contenido.push(
-          new Paragraph({
-            alignment: AlignmentType.LEFT,
-            spacing: { line: 480, after: 0 },
-            children: convertirTextoWord(elemento, {
-              bold: true,
-              italics: true,
-            }),
-          }),
-        );
-        continue;
-      }
-
-      if (tag === "p") {
-        contenido.push(
-          new Paragraph({
-            alignment: AlignmentType.LEFT,
-
-            indent: {
-              firstLine:
-                elemento.style.textIndent &&
-                elemento.style.textIndent !== "0px" &&
-                elemento.style.textIndent !== "0"
-                  ? 720
-                  : 0,
-            },
+            alignment: AlignmentType.RIGHT,
 
             spacing: {
-              line: 480,
               after: 0,
             },
 
-            children: convertirTextoWord(elemento),
-          }),
-        );
+            children: [
+              new TextRun({
+                text: String(index + 1),
 
-        continue;
-      }
+                font: "Times New Roman",
 
-      if (tag === "img") {
-        try {
-          const src = elemento.getAttribute("src");
-
-          if (src && src.startsWith("data:image")) {
-            const base64 = src.split(",")[1];
-
-            const binary = atob(base64);
-
-            const bytes = new Uint8Array(binary.length);
-
-            for (let i = 0; i < binary.length; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-
-            contenido.push(
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-
-                children: [
-                  new ImageRun({
-                    data: bytes,
-
-                    transformation: {
-                      width: 400,
-
-                      height: 300,
-                    },
-                  }),
-                ],
+                size: 24,
               }),
-            );
-          }
-        } catch (error) {
-          console.error("No se pudo convertir imagen:", error);
-        }
-
-        continue;
-      }
-
-      if (tag === "table") {
-        const filas = Array.from(elemento.querySelectorAll("tr"));
-
-        const filasWord = filas.map((fila) => {
-          const celdas = Array.from(fila.querySelectorAll("th, td"));
-
-          return new TableRow({
-            children: celdas.map(
-              (celda) =>
-                new TableCell({
-                  children: [
-                    new Paragraph({
-                      children: convertirTextoWord(celda),
-                    }),
-                  ],
-                }),
-            ),
-          });
-        });
-
-        contenido.push(
-          new Table({
-            rows: filasWord,
-
-            width: {
-              size: 100,
-              type: "pct",
-            },
-          }),
-        );
-
-        continue;
-      }
-
-      if (elemento.textContent.trim()) {
-        contenido.push(
-          new Paragraph({
-            spacing: {
-              line: 480,
-            },
-
-            children: convertirTextoWord(elemento),
-          }),
+            ],
+          })
         );
       }
-    }
 
-    return contenido;
-  };
+      secciones.push({
+        properties: {
+          page: {
+            size: {
+              width: 11906,
 
-  /* =========================================================
-     EXPORTAR WORD
-     ========================================================= */
+              height: 16838,
+            },
 
-  const exportarWord = async () => {
-    const editores = editorRefs.current.filter((editor) => editor);
+            margin: {
+              top: 1440,
 
-    if (!editores.length) {
-      return;
-    }
+              right: 1440,
 
-    try {
-      const secciones = [];
+              bottom: 1440,
 
-      for (let index = 0; index < editores.length; index++) {
-        const contenido = await crearContenidoWord(editores[index]);
-
-        if (numeracionActiva) {
-          contenido.unshift(
-            new Paragraph({
-              alignment: AlignmentType.RIGHT,
-
-              spacing: {
-                after: 0,
-              },
-
-              children: [
-                new TextRun({
-                  text: String(index + 1),
-
-                  font: "Times New Roman",
-
-                  size: 24,
-                }),
-              ],
-            }),
-          );
-        }
-
-        secciones.push({
-          properties: {
-            page: {
-              size: {
-                width: 11906,
-
-                height: 16838,
-              },
-
-              margin: {
-                top: 1440,
-
-                right: 1440,
-
-                bottom: 1440,
-
-                left: 1440,
-              },
+              left: 1440,
             },
           },
+        },
 
-          children: contenido,
-        });
-      }
-
-      const documento = new Document({
-        sections: secciones,
+        children: contenido,
       });
-
-      const blob = await Packer.toBlob(documento);
-
-      const url = URL.createObjectURL(blob);
-
-      const enlace = document.createElement("a");
-
-      enlace.href = url;
-
-      enlace.download = "Documento_APA.docx";
-
-      document.body.appendChild(enlace);
-
-      enlace.click();
-
-      document.body.removeChild(enlace);
-
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error exportando DOCX:", error);
-
-      alert("No se pudo exportar el documento Word.");
     }
-  };
 
+    const documento = new Document({
+      sections: secciones,
+    });
+
+    const blob = await Packer.toBlob(documento);
+
+    const url = URL.createObjectURL(blob);
+
+    const enlace = document.createElement("a");
+
+    enlace.href = url;
+
+    enlace.download = "Documento_APA.docx";
+
+    document.body.appendChild(enlace);
+
+    enlace.click();
+
+    document.body.removeChild(enlace);
+
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Error exportando DOCX:", error);
+
+    alert("No se pudo exportar el documento Word.");
+  }
+};
   /* =========================================================
      CARGAR DOCUMENTO
      ========================================================= */
